@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gurgaon 7-Day Weather Forecast</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', 'Roboto', Arial, sans-serif;
+      background-color: #18181b;
+      position: relative;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .glass {
+      background: linear-gradient(135deg, rgba(49,54,89,0.92) 60%, rgba(76,29,149,0.85) 100%);
+      box-shadow: 0 8px 32px 0 rgba(0,0,0,0.37);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 2rem;
+      border: 1px solid rgba(99,102,241,0.12);
+    }
+    .icon-accent {
+      filter: drop-shadow(0 2px 8px #818cf8) brightness(1.1) saturate(1.2);
+    }
+    .icon-warning {
+      filter: drop-shadow(0 2px 8px #fbbf24) brightness(1.1) saturate(1.2);
+    }
+    /* SVG pattern overlay */
+    .pattern-bg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.18;
+      background: url('data:image/svg+xml;utf8,<svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="58" height="58" rx="12" stroke="%233b3b4f" stroke-width="2"/><circle cx="30" cy="30" r="6" fill="%234c51a6" fill-opacity="0.3"/></svg>');
+      background-size: 120px 120px;
+      background-repeat: repeat;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center">
+  <div class="pattern-bg"></div>
+  <div class="glass w-full max-w-6xl mx-auto p-10 flex flex-col md:flex-row gap-10 items-stretch relative z-10">
+    <!-- Left: Main Weather -->
+    <div class="flex-1 flex flex-col justify-between text-indigo-100">
+      <div>
+        <div class="flex items-center gap-4 mb-4">
+          <span class="text-indigo-200 text-lg font-medium"><span id="cityName">Gurgaon, India</span></span>
+          <span class="text-indigo-400 text-base" id="currentDate"></span>
+        </div>
+        <div class="flex items-center gap-10 mt-2">
+          <img src="https://cdn.jsdelivr.net/gh/erikflowers/weather-icons/svg/wi-day-thunderstorm.svg" class="w-36 h-36 icon-accent" alt="Weather Icon" id="mainWeatherIcon">
+          <div>
+            <div class="text-7xl md:text-8xl font-extrabold text-white" id="mainTemp">--&deg;C</div>
+            <div class="text-2xl text-indigo-200 mt-2 font-semibold" id="mainSummary">Loading...</div>
+          </div>
+        </div>
+        <div class="flex gap-10 mt-8 text-indigo-300 text-lg">
+          <div><span class="inline-block align-middle mr-2"><svg class="inline w-6 h-6 icon-accent" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 0118 0M12 3v9l3 3"></path></svg></span><span id="mainWind">-- km/h</span></div>
+          <div><span class="inline-block align-middle mr-2"><svg class="inline w-6 h-6 icon-accent" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20c4.418 0 8-4.03 8-9a8 8 0 10-16 0c0 4.97 3.582 9 8 9z"></path></svg></span><span id="mainHumidity">--%</span></div>
+        </div>
+      </div>
+      <div class="mt-10">
+        <canvas id="forecastChart" height="120"></canvas>
+        <div id="forecastError" class="mt-4 text-center text-amber-300 font-medium"></div>
+      </div>
+    </div>
+    <!-- Right: 7-Day Forecast -->
+    <div class="w-full md:w-80 flex flex-col gap-4 bg-gradient-to-br from-indigo-800/80 to-blue-800/80 rounded-2xl p-6 shadow-lg text-indigo-100">
+      <div class="text-xl font-bold mb-2 text-white">7-Day Forecast</div>
+      <div id="forecastTableContainer" class="flex flex-col gap-2"></div>
+    </div>
+  </div>
+  <script>
+    // Set current date
+    document.getElementById('currentDate').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Fetch and display weather
+    async function updateWeather() {
+      const response = await fetch('/forecast');
+      const data = await response.json();
+      // Main weather
+      document.getElementById('mainTemp').textContent = data.realtime_temp !== null ? `${data.realtime_temp}°C` : '--°C';
+      document.getElementById('mainSummary').textContent = data.rainfall[0] === 'Yes' ? 'Rain Expected' : 'Clear';
+      document.getElementById('mainHumidity').textContent = data.realtime_humidity !== null ? `${data.realtime_humidity}%` : '--%';
+      document.getElementById('mainWind').textContent = data.realtime_wind !== undefined && data.realtime_wind !== null ? `${data.realtime_wind} km/h` : '-- km/h';
+      // Icon logic (simple)
+      let icon = 'wi-day-sunny';
+      let iconClass = 'icon-accent';
+      if (data.rainfall[0] === 'Yes') icon = 'wi-day-rain';
+      if (data.high_rain_days[0]) { icon = 'wi-day-thunderstorm'; iconClass = 'icon-warning'; }
+      const mainIcon = document.getElementById('mainWeatherIcon');
+      mainIcon.src = `https://cdn.jsdelivr.net/gh/erikflowers/weather-icons/svg/${icon}.svg`;
+      mainIcon.className = `w-36 h-36 ${iconClass}`;
+      // Chart
+      if (window.chart) window.chart.destroy();
+      const ctx = document.getElementById('forecastChart').getContext('2d');
+      window.chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.dates,
+          datasets: [{
+            label: 'Humidity (%)',
+            data: data.humidity,
+            borderColor: '#818cf8',
+            backgroundColor: 'rgba(129,140,248,0.12)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 8,
+            pointBackgroundColor: data.rainfall.map((r, i) => data.high_rain_days[i] ? '#fbbf24' : (r === 'Yes' ? '#38bdf8' : '#a5b4fc')),
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointStyle: 'circle',
+          }]
+        },
+        options: {
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const rain = data.rainfall[context.dataIndex];
+                  const rainProb = data.rainfall_probabilities[context.dataIndex];
+                  let label = `Humidity: ${context.parsed.y}% | Rain: ${rain} (${rainProb}%)`;
+                  if (data.high_rain_days[context.dataIndex]) label += ' ⚠️ High Probability';
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#e0e7ef', font: { size: 16 } },
+              title: { display: true, text: 'Humidity (%)', color: '#e0e7ef', font: { size: 18 } }
+            },
+            x: {
+              ticks: { color: '#e0e7ef', font: { size: 16 } },
+              title: { display: true, text: 'Date', color: '#e0e7ef', font: { size: 18 } }
+            }
+          }
+        }
+      });
+      // 7-day forecast table
+      let tableHtml = '';
+      for (let i = 0; i < data.dates.length; i++) {
+        let icon = 'wi-day-sunny', iconClass = 'icon-accent';
+        if (data.rainfall[i] === 'Yes') icon = 'wi-day-rain';
+        if (data.high_rain_days[i]) { icon = 'wi-day-thunderstorm'; iconClass = 'icon-warning'; }
+        tableHtml += `<div class="flex items-center justify-between px-3 py-2 rounded-lg ${data.high_rain_days[i] ? 'bg-amber-900/30' : 'bg-indigo-900/60'}">
+          <div class="flex flex-col">
+            <span class="font-semibold text-lg text-white">${new Date(data.dates[i]).toLocaleDateString(undefined, { weekday: 'short' })}</span>
+            <span class="text-xs text-indigo-300">${data.rainfall[i] === 'Yes' ? 'Rain' : 'Clear'}${data.high_rain_days[i] ? ' ⚠️' : ''}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <img src="https://cdn.jsdelivr.net/gh/erikflowers/weather-icons/svg/${icon}.svg" class="w-8 h-8 ${iconClass}" alt="Icon">
+            <span class="text-2xl font-bold text-white">${data.humidity[i]}%</span>
+            <span class="text-base text-indigo-200 ml-2">${data.rainfall_probabilities[i]}%</span>
+          </div>
+        </div>`;
+      }
+      document.getElementById('forecastTableContainer').innerHTML = tableHtml;
+    }
+    updateWeather();
+    document.getElementById('fetchForecast').addEventListener('click', updateWeather);
+  </script>
+</body>
+</html> 
